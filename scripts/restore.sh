@@ -51,7 +51,10 @@ else
 fi
 
 tar -tzf "$TMP_ARCHIVE" >/dev/null
-if ! tar -tzf "$TMP_ARCHIVE" | grep -q '^data/'; then
+if ! tar -tzf "$TMP_ARCHIVE" | awk '
+  /^data\// { found = 1 }
+  END { exit(found ? 0 : 1) }
+'; then
   echo "Backup does not contain a data/ directory." >&2
   exit 1
 fi
