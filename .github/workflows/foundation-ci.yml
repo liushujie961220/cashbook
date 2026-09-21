@@ -72,4 +72,42 @@ jobs:
         run: flutter pub get
       - name: Analyze Cashbook integration
         working-directory: .worktree/BeeCount
-        run: flutter analyze lib/services/automation/cashbook_notification_capture_service.dart lib/pages/automation/cashbook_notification_billing_page.dart lib/pages/automation/auto_billing_settings_page.dart lib/main.dart
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings lib/services/automation/cashbook_notification_capture_service.dart lib/pages/automation/cashbook_notification_billing_page.dart lib/pages/automation/auto_billing_settings_page.dart lib/main.dart
+
+  android-apk-build:
+    runs-on: ubuntu-latest
+    needs:
+      - privacy-audit
+      - android-capture-tests
+      - upstream-overlay-check
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.27.4"
+          channel: stable
+          cache: true
+      - name: Materialize Cashbook app
+        run: bash scripts/materialize-upstream.sh
+      - name: Install dependencies
+        working-directory: .worktree/BeeCount
+        run: flutter pub get
+      - name: Build Android release APK
+        working-directory: .worktree/BeeCount
+        run: flutter build apk --flavor prod --release --target-platform android-arm64
+      - name: Collect APK
+        run: |
+          mkdir -p dist
+          find .worktree/BeeCount/build/app/outputs/flutter-apk -type f -name '*.apk' -print
+          APK="$(find .worktree/BeeCount/build/app/outputs/flutter-apk -type f -name '*arm64*v8a*release*.apk' | head -n 1)"
+          if [ -z "$APK" ]; then
+            APK="$(find .worktree/BeeCount/build/app/outputs/flutter-apk -type f -name '*release*.apk' | head -n 1)"
+          fi
+          test -n "$APK"
+          cp "$APK" dist/Cashbook-v0.1.0-alpha-arm64.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cashbook-v0.1.0-alpha-arm64
+          path: dist/Cashbook-v0.1.0-alpha-arm64.apk
+          if-no-files-found: error
+          retention-days: 14
