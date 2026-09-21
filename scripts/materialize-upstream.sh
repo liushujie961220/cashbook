@@ -29,6 +29,9 @@ clone_at() {
 clone_at "$BEECOUNT_REPO" "$BEECOUNT_COMMIT" "$WORK_DIR/BeeCount"
 clone_at "$BEECOUNT_CLOUD_REPO" "$BEECOUNT_CLOUD_COMMIT" "$WORK_DIR/BeeCount-Cloud"
 
+# Apply Cashbook-owned source overlay first.
+python3 "$ROOT_DIR/scripts/apply-app-overlay.py"   "$WORK_DIR/BeeCount"   "$ROOT_DIR/overlay/app"
+
 apply_patch_dir() {
   local target="$1"
   local patch_dir="$2"
@@ -43,6 +46,7 @@ apply_patch_dir() {
   shopt -u nullglob
 }
 
+# Patch directories remain available for changes that are not suited to overlay injection.
 apply_patch_dir "$WORK_DIR/BeeCount" "$ROOT_DIR/patches/app"
 apply_patch_dir "$WORK_DIR/BeeCount-Cloud" "$ROOT_DIR/patches/cloud"
 
