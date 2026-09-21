@@ -42,7 +42,7 @@ def main() -> None:
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
 
-    # 2) Register the narrow Flutter bridge.
+    # 2) Register the narrow native Flutter bridge.
     main_activity = app_root / "android/app/src/main/kotlin/com/tntlikely/beecount/MainActivity.kt"
     bridge_anchor = '        android.util.Log.e("MainActivity", "LoggerPlugin.setup 调用完成")\n'
     bridge_injection = bridge_anchor + """
@@ -96,8 +96,36 @@ def main() -> None:
         '        android:maxSdkVersion="32" />\n',
     )
 
-    # 5) Do not restore BeeCount's automatic screenshot monitoring in Cashbook V0.1.
+    # 5) Flutter candidate intake: structured fields only.
     main_dart = app_root / "lib/main.dart"
+    import_anchor = "import 'services/platform/app_link_service.dart';\n"
+    import_injection = (
+        import_anchor
+        + "import 'services/automation/cashbook_notification_capture_service.dart';\n"
+    )
+    replace_once(
+        main_dart,
+        import_anchor,
+        import_injection,
+        "cashbook_notification_capture_service.dart",
+    )
+
+    init_anchor = "  await _initializeAppMode(container);\n"
+    init_injection = init_anchor + """
+  // Cashbook: collect sanitized payment candidates from the Android native
+  // queue. Auto-confirm remains opt-in and is disabled by default.
+  if (Platform.isAndroid) {
+    unawaited(CashbookNotificationCaptureService(container).initialize());
+  }
+"""
+    replace_once(
+        main_dart,
+        init_anchor,
+        init_injection,
+        "CashbookNotificationCaptureService(container).initialize()",
+    )
+
+    # 6) Do not restore BeeCount's automatic screenshot monitoring in Cashbook V0.1.
     screenshot_restore = (
         "  // 恢复截图自动识别设置（Android专属），传入container\n"
         "  await _restoreScreenshotMonitor(container);\n"
