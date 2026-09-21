@@ -115,6 +115,79 @@ class CashbookCandidateTransaction {
       };
 }
 
+
+enum CashbookDiagnosticOutcome {
+  blockedMessageCategory,
+  noCandidate,
+  candidateCreated,
+}
+
+class CashbookNotificationDiagnosticEvent {
+  const CashbookNotificationDiagnosticEvent({
+    required this.source,
+    required this.outcome,
+    required this.occurredAt,
+    this.category,
+    this.channelId,
+  });
+
+  final String source;
+  final CashbookDiagnosticOutcome outcome;
+  final DateTime occurredAt;
+  final String? category;
+  final String? channelId;
+
+  factory CashbookNotificationDiagnosticEvent.fromPlatformMap(
+    Map<Object?, Object?> raw,
+  ) {
+    final outcome = switch (raw['outcome']?.toString()) {
+      'BLOCKED_MESSAGE_CATEGORY' =>
+        CashbookDiagnosticOutcome.blockedMessageCategory,
+      'NO_CANDIDATE' => CashbookDiagnosticOutcome.noCandidate,
+      'CANDIDATE_CREATED' => CashbookDiagnosticOutcome.candidateCreated,
+      _ => throw const FormatException('Unsupported diagnostic outcome'),
+    };
+
+    final timeRaw = raw['occurredAtMillis'];
+    final occurredAtMillis =
+        timeRaw is num ? timeRaw.toInt() : int.parse(timeRaw.toString());
+
+    String? optionalString(Object? value) {
+      final text = value?.toString().trim();
+      return text == null || text.isEmpty ? null : text;
+    }
+
+    return CashbookNotificationDiagnosticEvent(
+      source: raw['source']?.toString() ?? 'UNKNOWN',
+      outcome: outcome,
+      occurredAt: DateTime.fromMillisecondsSinceEpoch(occurredAtMillis),
+      category: optionalString(raw['category']),
+      channelId: optionalString(raw['channelId']),
+    );
+  }
+
+  String get sourceLabel => switch (source) {
+        'WECHAT' => '微信',
+        'ALIPAY' => '支付宝',
+        _ => source,
+      };
+
+  String get outcomeLabel => switch (outcome) {
+        CashbookDiagnosticOutcome.blockedMessageCategory =>
+          '消息类已拦截（未读取正文）',
+        CashbookDiagnosticOutcome.noCandidate => '未生成候选',
+        CashbookDiagnosticOutcome.candidateCreated => '已生成候选',
+      };
+
+  String toShareLine() {
+    return '${occurredAt.toIso8601String()} | '
+        '$source | '
+        'category=${category ?? '-'} | '
+        'channelId=${channelId ?? '-'} | '
+        'outcome=${outcome.name}';
+  }
+}
+
 /// Cashbook Android payment-notification intake.
 ///
 /// Privacy boundary:
@@ -176,6 +249,49 @@ class CashbookNotificationCaptureService {
   Future<void> openNotificationAccessSettings() async {
     if (!Platform.isAndroid) return;
     await _channel.invokeMethod<void>('openNotificationAccessSettings');
+  }
+
+
+  Future<bool> isDiagnosticsEnabled() async {
+    if (!Platform.isAndroid) return false;
+    return (await _channel.invokeMethod<bool>('isDiagnosticsEnabled')) ?? false;
+  }
+
+  Future<void> setDiagnosticsEnabled(bool enabled) async {
+    if (!Platform.isAndroid) return;
+    await _channel.invokeMethod<bool>('setDiagnosticsEnabled', enabled);
+  }
+
+  Future<List<CashbookNotificationDiagnosticEvent>> diagnosticEvents() async {
+    if (!Platform.isAndroid) {
+      return const <CashbookNotificationDiagnosticEvent>[];
+    }
+
+    final rawItems =
+        await _channel.invokeMethod<List<dynamic>>('getDiagnostics') ??
+            const <dynamic>[];
+    final result = <CashbookNotificationDiagnosticEvent>[];
+
+    for (final raw in rawItems) {
+      if (raw is! Map) continue;
+      try {
+        result.add(
+          CashbookNotificationDiagnosticEvent.fromPlatformMap(
+            raw.cast<Object?, Object?>(),
+          ),
+        );
+      } catch (_) {
+        // Diagnostic data is disposable; malformed metadata is ignored.
+      }
+    }
+
+    result.sort((a, b) => a.occurredAt.compareTo(b.occurredAt));
+    return result;
+  }
+
+  Future<void> clearDiagnostics() async {
+    if (!Platform.isAndroid) return;
+    await _channel.invokeMethod<bool>('clearDiagnostics');
   }
 
   Future<bool> isAutoConfirmEnabled() async {
