@@ -15,6 +15,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  shell-script-syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate shell scripts
+        run: |
+          bash -n scripts/server-init.sh
+          bash -n scripts/materialize-upstream.sh
+          bash -n scripts/privacy-audit.sh
+          bash -n scripts/backup.sh
+          bash -n scripts/restore.sh
+          bash -n tests/server_backup_restore_smoke.sh
+      - name: Run backup and restore smoke tests
+        run: bash tests/server_backup_restore_smoke.sh
+
   privacy-audit:
     runs-on: ubuntu-latest
     steps:
