@@ -6,6 +6,8 @@ All notable Cashbook changes are recorded here.
 
 ### Added
 
+- Added opt-in local privacy diagnostics for notification calibration; only source/category/channelId/outcome/time are retained, never notification content.
+
 - Privacy-first Cashbook project foundation.
 - BeeCount / BeeCount Cloud pinned-upstream overlay workflow.
 - Self-hosted 2C / 2G / 40G deployment profile.
