@@ -26,10 +26,31 @@ class NotificationGatekeeperTest {
     }
 
     @Test
+    fun `wechat ordinary message category is dropped before content is read`() {
+        var supplierCalled = false
+
+        val result = gatekeeper.process(
+            packageName = NotificationGatekeeper.WECHAT_PACKAGE,
+            postedAtMillis = 1_700_000_000_000,
+            category = NotificationGatekeeper.MESSAGE_CATEGORY,
+        ) {
+            supplierCalled = true
+            NotificationContent(
+                title = "家人",
+                text = "我刚刚付款38元，你记一下",
+            )
+        }
+
+        assertNull(result)
+        assertFalse(supplierCalled)
+    }
+
+    @Test
     fun `wechat payment can produce an expense candidate`() {
         val result = gatekeeper.process(
             packageName = NotificationGatekeeper.WECHAT_PACKAGE,
             postedAtMillis = 1_700_000_000_000,
+            category = null,
         ) {
             NotificationContent(
                 title = "微信支付",
@@ -62,7 +83,7 @@ class NotificationGatekeeperTest {
     }
 
     @Test
-    fun `same transaction in same time bucket has same fingerprint`() {
+    fun `same transaction has stable core fingerprint across short reposts`() {
         fun at(time: Long) = gatekeeper.process(
             packageName = NotificationGatekeeper.ALIPAY_PACKAGE,
             postedAtMillis = time,
