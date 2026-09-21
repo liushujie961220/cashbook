@@ -40,19 +40,21 @@ jobs:
         run: bash scripts/materialize-upstream.sh
       - name: Verify notification bridge injection
         run: |
-          grep -q 'CashbookNotificationBridge.register('             .worktree/BeeCount/android/app/src/main/kotlin/com/tntlikely/beecount/MainActivity.kt
-          grep -q 'android:name=".CashbookNotificationCaptureService"'             .worktree/BeeCount/android/app/src/main/AndroidManifest.xml
-          test -f             .worktree/BeeCount/android/app/src/main/kotlin/com/tntlikely/beecount/CashbookNotificationCaptureService.kt
-      - name: Verify Flutter candidate intake injection
+          grep -q 'CashbookNotificationBridge.register(' .worktree/BeeCount/android/app/src/main/kotlin/com/tntlikely/beecount/MainActivity.kt
+          grep -q 'android:name=".CashbookNotificationCaptureService"' .worktree/BeeCount/android/app/src/main/AndroidManifest.xml
+          test -f .worktree/BeeCount/android/app/src/main/kotlin/com/tntlikely/beecount/CashbookNotificationCaptureService.kt
+      - name: Verify Flutter candidate intake and review UI
         run: |
-          grep -q "cashbook_notification_capture_service.dart"             .worktree/BeeCount/lib/main.dart
-          grep -q 'CashbookNotificationCaptureService(container).initialize()'             .worktree/BeeCount/lib/main.dart
-          test -f             .worktree/BeeCount/lib/services/automation/cashbook_notification_capture_service.dart
+          grep -q "cashbook_notification_capture_service.dart" .worktree/BeeCount/lib/main.dart
+          grep -q 'CashbookNotificationCaptureService(container).initialize()' .worktree/BeeCount/lib/main.dart
+          test -f .worktree/BeeCount/lib/services/automation/cashbook_notification_capture_service.dart
+          grep -q 'return const CashbookNotificationBillingPage();' .worktree/BeeCount/lib/pages/automation/auto_billing_settings_page.dart
+          test -f .worktree/BeeCount/lib/pages/automation/cashbook_notification_billing_page.dart
       - name: Verify privacy reductions
         run: |
-          ! grep -q 'android.permission.READ_MEDIA_IMAGES'             .worktree/BeeCount/android/app/src/main/AndroidManifest.xml
-          ! grep -q 'android.permission.READ_EXTERNAL_STORAGE'             .worktree/BeeCount/android/app/src/main/AndroidManifest.xml
-          ! grep -q 'await _restoreScreenshotMonitor(container);'             .worktree/BeeCount/lib/main.dart
+          ! grep -q 'android.permission.READ_MEDIA_IMAGES' .worktree/BeeCount/android/app/src/main/AndroidManifest.xml
+          ! grep -q 'android.permission.READ_EXTERNAL_STORAGE' .worktree/BeeCount/android/app/src/main/AndroidManifest.xml
+          ! grep -q 'await _restoreScreenshotMonitor(container);' .worktree/BeeCount/lib/main.dart
 
   flutter-overlay-analyze:
     runs-on: ubuntu-latest
@@ -69,5 +71,4 @@ jobs:
         run: flutter pub get
       - name: Analyze Cashbook integration
         working-directory: .worktree/BeeCount
-        run: |
-          flutter analyze             lib/services/automation/cashbook_notification_capture_service.dart             lib/main.dart
+        run: flutter analyze lib/services/automation/cashbook_notification_capture_service.dart lib/pages/automation/cashbook_notification_billing_page.dart lib/pages/automation/auto_billing_settings_page.dart lib/main.dart
