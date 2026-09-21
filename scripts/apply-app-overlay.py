@@ -42,7 +42,45 @@ def main() -> None:
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
 
-    # 2) Register the narrow Flutter bridge.
+    # 2) Apply Cashbook VERSION file to upstream Flutter pubspec.
+    version_file = overlay_root.parent.parent / "VERSION"
+    if not version_file.is_file():
+        raise SystemExit(f"Missing Cashbook VERSION file: {version_file}")
+    cashbook_version = version_file.read_text(encoding="utf-8").strip()
+    pubspec = app_root / "pubspec.yaml"
+    pubspec_lines = pubspec.read_text(encoding="utf-8").splitlines()
+    replaced_version = False
+    for index, line in enumerate(pubspec_lines):
+        if line.startswith("version:"):
+            pubspec_lines[index] = f"version: {cashbook_version}"
+            replaced_version = True
+            break
+    if not replaced_version:
+        raise SystemExit("Expected version field not found in BeeCount pubspec.yaml")
+    pubspec.write_text("\n".join(pubspec_lines) + "\n", encoding="utf-8")
+
+    # 3) Give Cashbook its own install identity while keeping BeeCount's
+    # Kotlin namespace untouched. Different applicationId = side-by-side install.
+    gradle = app_root / "android/app/build.gradle"
+    gradle_text = gradle.read_text(encoding="utf-8")
+    gradle_text = gradle_text.replace(
+        'applicationId = "com.tntlikely.beecount"',
+        'applicationId = "com.liushujie.cashbook"',
+        1,
+    )
+    gradle_text = gradle_text.replace(
+        'resValue "string", "app_name", "蜜蜂记账测试版"',
+        'resValue "string", "app_name", "Cashbook 测试版"',
+        1,
+    )
+    gradle_text = gradle_text.replace(
+        'resValue "string", "app_name", "蜜蜂记账"',
+        'resValue "string", "app_name", "Cashbook"',
+        1,
+    )
+    gradle.write_text(gradle_text, encoding="utf-8")
+
+    # 4) Register the narrow native Flutter bridge.
     main_activity = app_root / "android/app/src/main/kotlin/com/tntlikely/beecount/MainActivity.kt"
     bridge_anchor = '        android.util.Log.e("MainActivity", "LoggerPlugin.setup 调用完成")\n'
     bridge_injection = bridge_anchor + """
@@ -60,7 +98,7 @@ def main() -> None:
         "CashbookNotificationBridge.register(",
     )
 
-    # 3) Register the NotificationListenerService.
+    # 5) Register the NotificationListenerService.
     manifest = app_root / "android/app/src/main/AndroidManifest.xml"
     app_close = "    </application>\n"
     service_injection = """        <!-- Cashbook: privacy-first local payment-notification capture. -->
@@ -83,7 +121,7 @@ def main() -> None:
         'android:name=".CashbookNotificationCaptureService"',
     )
 
-    # 4) V0.1 does not need broad gallery-reading permissions.
+    # 6) V0.1 does not need broad gallery-reading permissions.
     remove_block(
         manifest,
         '    <!-- Required for reading screenshots (Android 13+) -->\n'
@@ -96,13 +134,65 @@ def main() -> None:
         '        android:maxSdkVersion="32" />\n',
     )
 
-    # 5) Do not restore BeeCount's automatic screenshot monitoring in Cashbook V0.1.
+    # 7) Flutter candidate intake: structured fields only.
     main_dart = app_root / "lib/main.dart"
+    import_anchor = "import 'services/platform/app_link_service.dart';\n"
+    import_injection = (
+        import_anchor
+        + "import 'services/automation/cashbook_notification_capture_service.dart';\n"
+    )
+    replace_once(
+        main_dart,
+        import_anchor,
+        import_injection,
+        "cashbook_notification_capture_service.dart",
+    )
+
+    init_anchor = "  await _initializeAppMode(container);\n"
+    init_injection = init_anchor + """
+  // Cashbook: collect sanitized payment candidates from the Android native
+  // queue. Auto-confirm remains opt-in and is disabled by default.
+  if (Platform.isAndroid) {
+    unawaited(CashbookNotificationCaptureService(container).initialize());
+  }
+"""
+    replace_once(
+        main_dart,
+        init_anchor,
+        init_injection,
+        "CashbookNotificationCaptureService(container).initialize()",
+    )
+
+    # 8) Do not restore BeeCount's automatic screenshot monitoring in Cashbook V0.1.
     screenshot_restore = (
         "  // 恢复截图自动识别设置（Android专属），传入container\n"
         "  await _restoreScreenshotMonitor(container);\n"
     )
     remove_block(main_dart, screenshot_restore)
+
+
+    # 9) Replace BeeCount's Android screenshot-auto-billing page with the
+    # Cashbook notification review / privacy page.
+    auto_billing_page = app_root / "lib/pages/automation/auto_billing_settings_page.dart"
+    page_import_anchor = "import 'ios_auto_billing_page.dart';\n"
+    page_import_injection = (
+        page_import_anchor
+        + "import 'cashbook_notification_billing_page.dart';\n"
+    )
+    replace_once(
+        auto_billing_page,
+        page_import_anchor,
+        page_import_injection,
+        "cashbook_notification_billing_page.dart",
+    )
+    android_route = "      return const AndroidAutoBillingPage();\n"
+    cashbook_route = "      return const CashbookNotificationBillingPage();\n"
+    replace_once(
+        auto_billing_page,
+        android_route,
+        cashbook_route,
+        "return const CashbookNotificationBillingPage();",
+    )
 
     print("Cashbook app overlay applied successfully.")
 

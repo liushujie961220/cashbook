@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: foundation-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   privacy-audit:
     runs-on: ubuntu-latest
@@ -40,11 +44,75 @@ jobs:
         run: bash scripts/materialize-upstream.sh
       - name: Verify notification bridge injection
         run: |
-          grep -q 'CashbookNotificationBridge.register('             .worktree/BeeCount/android/app/src/main/kotlin/com/tntlikely/beecount/MainActivity.kt
-          grep -q 'android:name=".CashbookNotificationCaptureService"'             .worktree/BeeCount/android/app/src/main/AndroidManifest.xml
-          test -f             .worktree/BeeCount/android/app/src/main/kotlin/com/tntlikely/beecount/CashbookNotificationCaptureService.kt
+          grep -q 'CashbookNotificationBridge.register(' .worktree/BeeCount/android/app/src/main/kotlin/com/tntlikely/beecount/MainActivity.kt
+          grep -q 'android:name=".CashbookNotificationCaptureService"' .worktree/BeeCount/android/app/src/main/AndroidManifest.xml
+          test -f .worktree/BeeCount/android/app/src/main/kotlin/com/tntlikely/beecount/CashbookNotificationCaptureService.kt
+      - name: Verify Flutter candidate intake and review UI
+        run: |
+          grep -q "cashbook_notification_capture_service.dart" .worktree/BeeCount/lib/main.dart
+          grep -q 'CashbookNotificationCaptureService(container).initialize()' .worktree/BeeCount/lib/main.dart
+          test -f .worktree/BeeCount/lib/services/automation/cashbook_notification_capture_service.dart
+          grep -q 'return const CashbookNotificationBillingPage();' .worktree/BeeCount/lib/pages/automation/auto_billing_settings_page.dart
+          test -f .worktree/BeeCount/lib/pages/automation/cashbook_notification_billing_page.dart
       - name: Verify privacy reductions
         run: |
-          ! grep -q 'android.permission.READ_MEDIA_IMAGES'             .worktree/BeeCount/android/app/src/main/AndroidManifest.xml
-          ! grep -q 'android.permission.READ_EXTERNAL_STORAGE'             .worktree/BeeCount/android/app/src/main/AndroidManifest.xml
-          ! grep -q 'await _restoreScreenshotMonitor(container);'             .worktree/BeeCount/lib/main.dart
+          ! grep -q 'android.permission.READ_MEDIA_IMAGES' .worktree/BeeCount/android/app/src/main/AndroidManifest.xml
+          ! grep -q 'android.permission.READ_EXTERNAL_STORAGE' .worktree/BeeCount/android/app/src/main/AndroidManifest.xml
+          ! grep -q 'await _restoreScreenshotMonitor(container);' .worktree/BeeCount/lib/main.dart
+
+  flutter-overlay-analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.27.4"
+          channel: stable
+          cache: true
+      - name: Materialize Cashbook app
+        run: bash scripts/materialize-upstream.sh
+      - name: Install Flutter dependencies
+        working-directory: .worktree/BeeCount
+        run: flutter pub get
+      - name: Analyze Cashbook integration
+        working-directory: .worktree/BeeCount
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings lib/services/automation/cashbook_notification_capture_service.dart lib/pages/automation/cashbook_notification_billing_page.dart lib/pages/automation/auto_billing_settings_page.dart lib/main.dart
+
+  android-apk-build:
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    needs:
+      - privacy-audit
+      - android-capture-tests
+      - upstream-overlay-check
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.27.4"
+          channel: stable
+          cache: true
+      - name: Materialize Cashbook app
+        run: bash scripts/materialize-upstream.sh
+      - name: Install dependencies
+        working-directory: .worktree/BeeCount
+        run: flutter pub get
+      - name: Build Android release APK
+        working-directory: .worktree/BeeCount
+        run: flutter build apk --flavor prod --release --target-platform android-arm64
+      - name: Collect APK
+        run: |
+          mkdir -p dist
+          find .worktree/BeeCount/build/app/outputs/flutter-apk -type f -name '*.apk' -print
+          APK="$(find .worktree/BeeCount/build/app/outputs/flutter-apk -type f -name '*arm64*v8a*release*.apk' | head -n 1)"
+          if [ -z "$APK" ]; then
+            APK="$(find .worktree/BeeCount/build/app/outputs/flutter-apk -type f -name '*release*.apk' | head -n 1)"
+          fi
+          test -n "$APK"
+          cp "$APK" dist/Cashbook-v0.1.0-alpha-arm64.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cashbook-v0.1.0-alpha-arm64
+          path: dist/Cashbook-v0.1.0-alpha-arm64.apk
+          if-no-files-found: error
+          retention-days: 14
