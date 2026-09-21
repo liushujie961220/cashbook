@@ -26,6 +26,27 @@ object CashbookNotificationBridge {
                 "drainCandidates" ->
                     result.success(CashbookCandidateStore(context).drain())
 
+                "isDiagnosticsEnabled" ->
+                    result.success(CashbookNotificationDiagnosticStore(context).isEnabled())
+
+                "setDiagnosticsEnabled" -> {
+                    val enabled = call.arguments as? Boolean
+                    if (enabled == null) {
+                        result.error("bad_args", "Expected boolean enabled flag", null)
+                    } else {
+                        CashbookNotificationDiagnosticStore(context).setEnabled(enabled)
+                        result.success(true)
+                    }
+                }
+
+                "getDiagnostics" ->
+                    result.success(CashbookNotificationDiagnosticStore(context).events())
+
+                "clearDiagnostics" -> {
+                    CashbookNotificationDiagnosticStore(context).clear()
+                    result.success(true)
+                }
+
                 else -> result.notImplemented()
             }
         }

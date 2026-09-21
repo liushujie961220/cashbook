@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../services/automation/cashbook_notification_capture_service.dart';
@@ -19,6 +20,8 @@ class _CashbookNotificationBillingPageState
   bool _loading = true;
   bool _notificationAccess = false;
   bool _autoConfirm = false;
+  bool _diagnosticsEnabled = false;
+  List<CashbookNotificationDiagnosticEvent> _diagnostics = const [];
   double _threshold =
       CashbookNotificationCaptureService.defaultAutoConfirmThreshold;
   List<CashbookCandidateTransaction> _pending = const [];
@@ -63,11 +66,15 @@ class _CashbookNotificationBillingPageState
     final autoConfirm = await service.isAutoConfirmEnabled();
     final threshold = await service.autoConfirmThreshold();
     final pending = await service.pendingCandidates();
+    final diagnosticsEnabled = await service.isDiagnosticsEnabled();
+    final diagnostics = await service.diagnosticEvents();
 
     if (!mounted) return;
     setState(() {
       _notificationAccess = access;
       _autoConfirm = autoConfirm;
+      _diagnosticsEnabled = diagnosticsEnabled;
+      _diagnostics = diagnostics.reversed.toList(growable: false);
       _threshold = threshold;
       _pending = pending.reversed.toList(growable: false);
       _loading = false;
@@ -86,6 +93,37 @@ class _CashbookNotificationBillingPageState
     if (service == null) return;
     setState(() => _threshold = value);
     await service.setAutoConfirmThreshold(value);
+  }
+
+
+  Future<void> _toggleDiagnostics(bool value) async {
+    final service = _service;
+    if (service == null) return;
+    await service.setDiagnosticsEnabled(value);
+    await _reload();
+  }
+
+  Future<void> _clearDiagnostics() async {
+    final service = _service;
+    if (service == null) return;
+    await service.clearDiagnostics();
+    await _reload();
+  }
+
+  Future<void> _copyDiagnostics() async {
+    if (_diagnostics.isEmpty) return;
+
+    final lines = <String>[
+      'Cashbook notification diagnostics',
+      'Only metadata is included. No title/body/amount/merchant.',
+      ..._diagnostics.map((item) => item.toShareLine()),
+    ];
+    await Clipboard.setData(ClipboardData(text: lines.join('\n')));
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('脱敏诊断信息已复制')),
+    );
   }
 
   Future<void> _confirm(CashbookCandidateTransaction candidate) async {
@@ -134,6 +172,8 @@ class _CashbookNotificationBillingPageState
                   _permissionCard(context),
                   const SizedBox(height: 12),
                   _automationCard(context),
+                  const SizedBox(height: 12),
+                  _diagnosticsCard(context),
                   const SizedBox(height: 18),
                   Row(
                     children: [
@@ -256,6 +296,79 @@ class _CashbookNotificationBillingPageState
               label: _threshold.toStringAsFixed(2),
               onChanged: _autoConfirm ? _setThreshold : null,
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+
+  Widget _diagnosticsCard(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('隐私诊断（测试期）'),
+              subtitle: const Text(
+                '默认关闭。只记录微信/支付宝来源、category、channelId、'
+                '处理结果和时间；不记录通知标题、正文、金额、商户。',
+              ),
+              value: _diagnosticsEnabled,
+              onChanged: _notificationAccess ? _toggleDiagnostics : null,
+            ),
+            if (_diagnosticsEnabled) ...[
+              const Divider(height: 1),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Text(
+                    '最近24小时 · 最多50条',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: _diagnostics.isEmpty ? null : _copyDiagnostics,
+                    child: const Text('复制'),
+                  ),
+                  TextButton(
+                    onPressed: _diagnostics.isEmpty ? null : _clearDiagnostics,
+                    child: const Text('清空'),
+                  ),
+                ],
+              ),
+              if (_diagnostics.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Text(
+                    '暂无诊断事件。完成一次微信/支付宝通知测试后再刷新。',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                )
+              else
+                ..._diagnostics.take(8).map(
+                      (item) => Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(
+                          '${_formatTime(item.occurredAt)} · '
+                          '${item.sourceLabel} · '
+                          '${item.outcomeLabel}\n'
+                          'category=${item.category ?? '-'} · '
+                          'channelId=${item.channelId ?? '-'}',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                      ),
+                    ),
+            ],
           ],
         ),
       ),
