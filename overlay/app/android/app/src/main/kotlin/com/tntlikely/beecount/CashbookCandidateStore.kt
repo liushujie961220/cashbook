@@ -3,6 +3,7 @@ package com.tntlikely.beecount
 import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlin.math.abs
 
 class CashbookCandidateStore(context: Context) {
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -11,7 +12,14 @@ class CashbookCandidateStore(context: Context) {
         synchronized(lock) {
             val array = loadArray()
             for (index in 0 until array.length()) {
-                if (array.optJSONObject(index)?.optString("fingerprint") == candidate.fingerprint) {
+                val existing = array.optJSONObject(index) ?: continue
+                val sameFingerprint =
+                    existing.optString("fingerprint") == candidate.fingerprint
+                val closeInTime = abs(
+                    existing.optLong("occurredAtMillis") - candidate.occurredAtMillis
+                ) <= DEDUP_WINDOW_MS
+
+                if (sameFingerprint && closeInTime) {
                     return
                 }
             }
@@ -65,6 +73,7 @@ class CashbookCandidateStore(context: Context) {
         private const val PREFS_NAME = "cashbook_notification_capture"
         private const val KEY_QUEUE = "candidate_queue_v1"
         private const val MAX_ITEMS = 50
+        private const val DEDUP_WINDOW_MS = 2 * 60 * 1000L
         private val lock = Any()
     }
 }
