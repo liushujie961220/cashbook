@@ -136,10 +136,10 @@ def main() -> None:
     # 7) Replace BeeCount's Android screenshot-auto-billing page with the
     # Cashbook notification review / privacy page.
     auto_billing_page = app_root / "lib/pages/automation/auto_billing_settings_page.dart"
-    page_import_anchor = "import 'ios_auto_billing_page.dart';\\n"
+    page_import_anchor = "import 'ios_auto_billing_page.dart';\n"
     page_import_injection = (
         page_import_anchor
-        + "import 'cashbook_notification_billing_page.dart';\\n"
+        + "import 'cashbook_notification_billing_page.dart';\n"
     )
     replace_once(
         auto_billing_page,
@@ -147,8 +147,8 @@ def main() -> None:
         page_import_injection,
         "cashbook_notification_billing_page.dart",
     )
-    android_route = "      return const AndroidAutoBillingPage();\\n"
-    cashbook_route = "      return const CashbookNotificationBillingPage();\\n"
+    android_route = "      return const AndroidAutoBillingPage();\n"
+    cashbook_route = "      return const CashbookNotificationBillingPage();\n"
     replace_once(
         auto_billing_page,
         android_route,
