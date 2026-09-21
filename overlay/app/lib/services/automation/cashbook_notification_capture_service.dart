@@ -143,6 +143,7 @@ class CashbookNotificationCaptureService {
   static const double defaultAutoConfirmThreshold = 0.94;
   static const int _maxPending = 100;
   static const int _maxProcessed = 300;
+  static const Duration _dedupWindow = Duration(minutes: 2);
   static const Duration _foregroundPollInterval = Duration(seconds: 8);
 
   final ProviderContainer _container;
@@ -220,7 +221,7 @@ class CashbookNotificationCaptureService {
 
       final prefs = await SharedPreferences.getInstance();
       final pending = _loadPending(prefs);
-      final processed = _loadProcessed(prefs).toSet();
+      final processed = _loadProcessed(prefs);
 
       for (final raw in rawItems) {
         if (raw is! Map) continue;
@@ -228,12 +229,12 @@ class CashbookNotificationCaptureService {
           final candidate = CashbookCandidateTransaction.fromPlatformMap(
             raw.cast<Object?, Object?>(),
           );
-          if (processed.contains(candidate.fingerprint)) continue;
+          if (_wasProcessed(candidate, processed)) continue;
 
           final duplicate = pending.any((item) =>
               item.fingerprint == candidate.fingerprint &&
               item.occurredAt.difference(candidate.occurredAt).abs() <=
-                  const Duration(minutes: 2));
+                  _dedupWindow);
           if (!duplicate) pending.add(candidate);
         } catch (e) {
           logger.warning(
@@ -326,7 +327,7 @@ class CashbookNotificationCaptureService {
           item.fingerprint == candidate.fingerprint &&
           item.occurredAt == candidate.occurredAt);
     await _savePending(prefs, pending);
-    await _rememberProcessed(prefs, candidate.fingerprint);
+    await _rememberProcessed(prefs, candidate);
   }
 
   String _buildNote(CashbookCandidateTransaction candidate) {
@@ -346,16 +347,52 @@ class CashbookNotificationCaptureService {
           item.fingerprint == candidate.fingerprint &&
           item.occurredAt == candidate.occurredAt);
     await _savePending(prefs, pending);
-    await _rememberProcessed(prefs, candidate.fingerprint);
+    await _rememberProcessed(prefs, candidate);
+  }
+
+  bool _wasProcessed(
+    CashbookCandidateTransaction candidate,
+    List<String> markers,
+  ) {
+    final occurredAtMillis = candidate.occurredAt.millisecondsSinceEpoch;
+    for (final marker in markers) {
+      final separator = marker.lastIndexOf('@');
+      if (separator <= 0 || separator == marker.length - 1) continue;
+
+      final fingerprint = marker.substring(0, separator);
+      if (fingerprint != candidate.fingerprint) continue;
+
+      final previousMillis = int.tryParse(marker.substring(separator + 1));
+      if (previousMillis == null) continue;
+
+      if ((previousMillis - occurredAtMillis).abs() <=
+          _dedupWindow.inMilliseconds) {
+        return true;
+      }
+    }
+    return false;
   }
 
   Future<void> _rememberProcessed(
     SharedPreferences prefs,
-    String fingerprint,
+    CashbookCandidateTransaction candidate,
   ) async {
     final processed = _loadProcessed(prefs);
-    processed.remove(fingerprint);
-    processed.add(fingerprint);
+    final marker =
+        '${candidate.fingerprint}@${candidate.occurredAt.millisecondsSinceEpoch}';
+
+    processed.removeWhere((item) {
+      final separator = item.lastIndexOf('@');
+      if (separator <= 0 || separator == item.length - 1) return false;
+      final fingerprint = item.substring(0, separator);
+      if (fingerprint != candidate.fingerprint) return false;
+      final previousMillis = int.tryParse(item.substring(separator + 1));
+      if (previousMillis == null) return false;
+      return (previousMillis - candidate.occurredAt.millisecondsSinceEpoch)
+              .abs() <=
+          _dedupWindow.inMilliseconds;
+    });
+    processed.add(marker);
     if (processed.length > _maxProcessed) {
       processed.removeRange(0, processed.length - _maxProcessed);
     }
