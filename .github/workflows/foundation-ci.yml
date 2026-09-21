@@ -26,6 +26,9 @@ jobs:
           bash -n scripts/privacy-audit.sh
           bash -n scripts/backup.sh
           bash -n scripts/restore.sh
+          bash -n tests/server_backup_restore_smoke.sh
+      - name: Run backup and restore smoke tests
+        run: bash tests/server_backup_restore_smoke.sh
 
   privacy-audit:
     runs-on: ubuntu-latest
