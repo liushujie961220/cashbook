@@ -43,8 +43,31 @@ jobs:
           grep -q 'CashbookNotificationBridge.register('             .worktree/BeeCount/android/app/src/main/kotlin/com/tntlikely/beecount/MainActivity.kt
           grep -q 'android:name=".CashbookNotificationCaptureService"'             .worktree/BeeCount/android/app/src/main/AndroidManifest.xml
           test -f             .worktree/BeeCount/android/app/src/main/kotlin/com/tntlikely/beecount/CashbookNotificationCaptureService.kt
+      - name: Verify Flutter candidate intake injection
+        run: |
+          grep -q "cashbook_notification_capture_service.dart"             .worktree/BeeCount/lib/main.dart
+          grep -q 'CashbookNotificationCaptureService(container).initialize()'             .worktree/BeeCount/lib/main.dart
+          test -f             .worktree/BeeCount/lib/services/automation/cashbook_notification_capture_service.dart
       - name: Verify privacy reductions
         run: |
           ! grep -q 'android.permission.READ_MEDIA_IMAGES'             .worktree/BeeCount/android/app/src/main/AndroidManifest.xml
           ! grep -q 'android.permission.READ_EXTERNAL_STORAGE'             .worktree/BeeCount/android/app/src/main/AndroidManifest.xml
           ! grep -q 'await _restoreScreenshotMonitor(container);'             .worktree/BeeCount/lib/main.dart
+
+  flutter-overlay-analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Materialize Cashbook app
+        run: bash scripts/materialize-upstream.sh
+      - name: Install Flutter dependencies
+        working-directory: .worktree/BeeCount
+        run: flutter pub get
+      - name: Analyze Cashbook integration
+        working-directory: .worktree/BeeCount
+        run: |
+          flutter analyze             lib/services/automation/cashbook_notification_capture_service.dart             lib/main.dart
