@@ -10,6 +10,7 @@ ENV_FILE="$DEPLOY_DIR/.env"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 PLAIN_OUT="$BACKUP_DIR/cashbook-$STAMP.tar.gz"
 PARTIAL_OUT="$PLAIN_OUT.partial"
+ENCRYPTED_OUT="$PLAIN_OUT.enc"
 SERVICE="cashbook-cloud"
 
 mkdir -p "$BACKUP_DIR"
@@ -22,6 +23,27 @@ fi
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "Missing $ENV_FILE. Run scripts/server-init.sh first." >&2
   exit 1
+fi
+
+# Resolve optional encryption before touching live data. If the user asked for
+# encrypted backups, fail closed instead of creating an unexpected plaintext
+# backup when the key/tooling is unavailable.
+PASSPHRASE_FILE="${CASHBOOK_BACKUP_PASSPHRASE_FILE:-}"
+if [[ -z "$PASSPHRASE_FILE" ]]; then
+  PASSPHRASE_FILE="$(grep -E '^CASHBOOK_BACKUP_PASSPHRASE_FILE=' "$ENV_FILE" 2>/dev/null | tail -n1 | cut -d= -f2- || true)"
+fi
+
+encrypt_backup=false
+if [[ -n "$PASSPHRASE_FILE" ]]; then
+  encrypt_backup=true
+  if [[ ! -r "$PASSPHRASE_FILE" ]]; then
+    echo "Backup passphrase file is not readable: $PASSPHRASE_FILE" >&2
+    exit 1
+  fi
+  if ! command -v openssl >/dev/null 2>&1; then
+    echo "openssl is required for encrypted backups." >&2
+    exit 1
+  fi
 fi
 
 compose() {
@@ -39,11 +61,18 @@ restart_if_needed() {
   fi
 }
 
-cleanup_partial() {
+encrypted_ready=false
+cleanup_on_exit() {
+  restart_if_needed || true
   rm -f "$PARTIAL_OUT"
-}
 
-trap 'restart_if_needed; cleanup_partial' EXIT
+  # Fail closed: when encryption was requested, an unsuccessful run must not
+  # leave either plaintext or partial encrypted artifacts behind.
+  if [[ "$encrypt_backup" == "true" && "$encrypted_ready" != "true" ]]; then
+    rm -f "$PLAIN_OUT" "$ENCRYPTED_OUT"
+  fi
+}
+trap cleanup_on_exit EXIT
 
 if [[ "$was_running" == "true" ]]; then
   echo "Stopping $SERVICE briefly for a consistent SQLite backup..."
@@ -59,32 +88,17 @@ was_running=false
 tar -tzf "$PARTIAL_OUT" >/dev/null
 mv "$PARTIAL_OUT" "$PLAIN_OUT"
 
-# Optional encryption. Only the path is read from .env; the passphrase itself
-# stays in a separate root-owned file.
-PASSPHRASE_FILE="${CASHBOOK_BACKUP_PASSPHRASE_FILE:-}"
-if [[ -z "$PASSPHRASE_FILE" ]]; then
-  PASSPHRASE_FILE="$(grep -E '^CASHBOOK_BACKUP_PASSPHRASE_FILE=' "$ENV_FILE" 2>/dev/null | tail -n1 | cut -d= -f2- || true)"
-fi
-
 FINAL_OUT="$PLAIN_OUT"
-if [[ -n "$PASSPHRASE_FILE" ]]; then
-  if [[ ! -r "$PASSPHRASE_FILE" ]]; then
-    echo "Backup passphrase file is not readable: $PASSPHRASE_FILE" >&2
-    exit 1
-  fi
-  if ! command -v openssl >/dev/null 2>&1; then
-    echo "openssl is required for encrypted backups." >&2
-    exit 1
-  fi
-
-  ENCRYPTED_OUT="$PLAIN_OUT.enc"
+if [[ "$encrypt_backup" == "true" ]]; then
   openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000     -in "$PLAIN_OUT"     -out "$ENCRYPTED_OUT"     -pass "file:$PASSPHRASE_FILE"
 
+  chmod 600 "$ENCRYPTED_OUT"
+  encrypted_ready=true
   rm -f "$PLAIN_OUT"
   FINAL_OUT="$ENCRYPTED_OUT"
+else
+  chmod 600 "$PLAIN_OUT"
 fi
-
-chmod 600 "$FINAL_OUT"
 
 # Keep local backups for 14 days by default.
 find "$BACKUP_DIR" -type f   \( -name 'cashbook-*.tar.gz' -o -name 'cashbook-*.tar.gz.enc' \)   -mtime +14 -delete
