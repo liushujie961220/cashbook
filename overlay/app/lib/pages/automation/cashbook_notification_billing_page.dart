@@ -200,7 +200,6 @@ class _CashbookNotificationBillingPageState
   }
 
   Widget _permissionCard(BuildContext context) {
-    final theme = Theme.of(context);
     final color = _notificationAccess ? Colors.green : Colors.orange;
 
     return Card(
