@@ -31,3 +31,20 @@ jobs:
           gradle-version: "8.10.2"
       - name: Run capture unit tests
         run: gradle -p prototype/android-capture test --no-daemon
+
+  upstream-overlay-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Materialize pinned upstreams and apply Cashbook overlay
+        run: bash scripts/materialize-upstream.sh
+      - name: Verify notification bridge injection
+        run: |
+          grep -q 'CashbookNotificationBridge.register('             .worktree/BeeCount/android/app/src/main/kotlin/com/tntlikely/beecount/MainActivity.kt
+          grep -q 'android:name=".CashbookNotificationCaptureService"'             .worktree/BeeCount/android/app/src/main/AndroidManifest.xml
+          test -f             .worktree/BeeCount/android/app/src/main/kotlin/com/tntlikely/beecount/CashbookNotificationCaptureService.kt
+      - name: Verify privacy reductions
+        run: |
+          ! grep -q 'android.permission.READ_MEDIA_IMAGES'             .worktree/BeeCount/android/app/src/main/AndroidManifest.xml
+          ! grep -q 'android.permission.READ_EXTERNAL_STORAGE'             .worktree/BeeCount/android/app/src/main/AndroidManifest.xml
+          ! grep -q 'await _restoreScreenshotMonitor(container);'             .worktree/BeeCount/lib/main.dart
