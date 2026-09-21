@@ -10,16 +10,20 @@ class CashbookNotificationCaptureService : NotificationListenerService() {
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         val event = sbn ?: return
         val packageName = event.packageName ?: return
+        val notification = event.notification
 
         // Critical privacy boundary:
-        // Notification.extras must never be touched before package allowlist validation.
-        if (!gatekeeper.isAllowedPackage(packageName)) return
+        // 1) package allowlist
+        // 2) metadata-only category gate
+        // Both happen before Notification.extras is touched.
+        if (!gatekeeper.shouldReadContent(packageName, notification.category)) return
 
         val candidate = gatekeeper.process(
             packageName = packageName,
             postedAtMillis = event.postTime,
+            category = notification.category,
         ) {
-            val extras = event.notification.extras
+            val extras = notification.extras
             CashbookNotificationContent(
                 title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString(),
                 text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString(),

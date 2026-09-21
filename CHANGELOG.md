@@ -23,6 +23,9 @@ All notable Cashbook changes are recorded here.
 
 ### Privacy
 
+- WeChat/Alipay notifications classified by Android as ordinary messages are discarded before title/body/extras are read.
+- Final prod APK is audited after Android manifest merging; media, storage, microphone, SMS and APK-install permissions are blocked.
+
 - No SMS permissions.
 - No AccessibilityService.
 - No background screen capture.
