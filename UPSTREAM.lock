@@ -1,0 +1,8 @@
+# Cashbook pinned upstream revisions
+# Update deliberately; never track moving main in a reproducible build.
+
+BEECOUNT_REPO=https://github.com/TNT-Likely/BeeCount.git
+BEECOUNT_COMMIT=d431cfd403b8c2b5f42fe143e3cbe4b1d741df4c
+
+BEECOUNT_CLOUD_REPO=https://github.com/TNT-Likely/BeeCount-Cloud.git
+BEECOUNT_CLOUD_COMMIT=a8bd8837a94d29ff37f6e92c5fa89c5f36b62d8a

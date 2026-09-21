@@ -1,0 +1,45 @@
+services:
+  cashbook-cloud:
+    image: sunxiao0721/beecount-cloud:latest
+    container_name: cashbook-cloud
+    restart: unless-stopped
+
+    # Privacy-first default: only bind to localhost.
+    # Put Caddy/Nginx/Tailscale in front of it for remote access.
+    ports:
+      - "${CASHBOOK_BIND:-127.0.0.1}:8869:8080"
+
+    volumes:
+      - ./data:/data
+
+    environment:
+      TZ: "${TZ:-Asia/Shanghai}"
+      JWT_SECRET: "${JWT_SECRET:?JWT_SECRET is required}"
+      BOOTSTRAP_ADMIN_EMAIL: "${BOOTSTRAP_ADMIN_EMAIL:?BOOTSTRAP_ADMIN_EMAIL is required}"
+      BOOTSTRAP_ADMIN_PASSWORD: "${BOOTSTRAP_ADMIN_PASSWORD:?BOOTSTRAP_ADMIN_PASSWORD is required}"
+
+      # Two-person private instance: no public signup.
+      REGISTRATION_ENABLED: "false"
+
+      # Keep optional document-RAG network traffic disabled.
+      EMBEDDING_API_KEY: ""
+      RAG_INDEX_REFRESH_INTERVAL_SECONDS: "0"
+
+      # App sync remains enabled.
+      ALLOW_APP_RW_SCOPES: "true"
+
+    # Leave enough RAM for the OS, Docker and reverse proxy on a 2 GB VPS.
+    mem_limit: 1100m
+    cpus: 1.50
+    pids_limit: 256
+
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

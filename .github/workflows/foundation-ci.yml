@@ -1,0 +1,50 @@
+name: Foundation CI
+
+on:
+  push:
+    branches:
+      - main
+      - "feature/**"
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  privacy-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run privacy audit
+        run: bash scripts/privacy-audit.sh
+
+  android-capture-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10.2"
+      - name: Run capture unit tests
+        run: gradle -p prototype/android-capture test --no-daemon
+
+  upstream-overlay-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Materialize pinned upstreams and apply Cashbook overlay
+        run: bash scripts/materialize-upstream.sh
+      - name: Verify notification bridge injection
+        run: |
+          grep -q 'CashbookNotificationBridge.register('             .worktree/BeeCount/android/app/src/main/kotlin/com/tntlikely/beecount/MainActivity.kt
+          grep -q 'android:name=".CashbookNotificationCaptureService"'             .worktree/BeeCount/android/app/src/main/AndroidManifest.xml
+          test -f             .worktree/BeeCount/android/app/src/main/kotlin/com/tntlikely/beecount/CashbookNotificationCaptureService.kt
+      - name: Verify privacy reductions
+        run: |
+          ! grep -q 'android.permission.READ_MEDIA_IMAGES'             .worktree/BeeCount/android/app/src/main/AndroidManifest.xml
+          ! grep -q 'android.permission.READ_EXTERNAL_STORAGE'             .worktree/BeeCount/android/app/src/main/AndroidManifest.xml
+          ! grep -q 'await _restoreScreenshotMonitor(container);'             .worktree/BeeCount/lib/main.dart
