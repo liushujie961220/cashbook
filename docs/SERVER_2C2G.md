@@ -68,4 +68,41 @@ Before putting real financial data into the service:
 - create the second user;
 - verify shared ledger;
 - run `bash scripts/backup.sh`;
-- perform one restore rehearsal.
+- perform one restore rehearsal with `bash scripts/restore.sh <backup> --yes`.
+
+## Backup safety
+
+Cashbook uses SQLite, so a raw `tar` of a live data directory is not treated as a trustworthy backup.
+
+`scripts/backup.sh` therefore:
+
+1. detects whether `cashbook-cloud` is running;
+2. briefly stops the container;
+3. creates a consistent archive of `deploy/data`;
+4. immediately restarts the service;
+5. validates the archive;
+6. optionally encrypts it with AES-256-CBC + PBKDF2;
+7. keeps backups for 14 days by default.
+
+For encrypted backups, create a root-owned passphrase file outside the repository and set only its path:
+
+```bash
+mkdir -p /root/.config/cashbook
+openssl rand -base64 48 > /root/.config/cashbook/backup-passphrase
+chmod 600 /root/.config/cashbook/backup-passphrase
+```
+
+Then set in `deploy/.env`:
+
+```
+CASHBOOK_BACKUP_PASSPHRASE_FILE=/root/.config/cashbook/backup-passphrase
+```
+
+The passphrase itself must never be committed to GitHub.
+
+### Restore safety
+
+`scripts/restore.sh` validates the archive before touching live data. The old
+`deploy/data` directory is renamed to `data.pre-restore-<timestamp>`, so a
+failed restore can roll back automatically. After a successful restore and
+manual validation, remove the rollback directory yourself.
