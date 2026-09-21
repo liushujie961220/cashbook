@@ -100,7 +100,7 @@ jobs:
       - name: Build Android release APK
         working-directory: .worktree/BeeCount
         run: flutter build apk --flavor prod --release --target-platform android-arm64
-      - name: Collect APK
+      - name: Collect and audit final APK
         run: |
           mkdir -p dist
           find .worktree/BeeCount/build/app/outputs/flutter-apk -type f -name '*.apk' -print
@@ -110,6 +110,43 @@ jobs:
           fi
           test -n "$APK"
           cp "$APK" dist/Cashbook-v0.1.0-alpha-arm64.apk
+
+          APK_ANALYZER="$(find "$ANDROID_HOME" -type f -name apkanalyzer 2>/dev/null | head -n 1)"
+          if [ -z "$APK_ANALYZER" ]; then
+            echo "::error::apkanalyzer not found under ANDROID_HOME"
+            exit 1
+          fi
+
+          APP_ID="$("$APK_ANALYZER" manifest application-id dist/Cashbook-v0.1.0-alpha-arm64.apk)"
+          test "$APP_ID" = "com.liushujie.cashbook"
+
+          "$APK_ANALYZER" manifest print dist/Cashbook-v0.1.0-alpha-arm64.apk > dist/AndroidManifest-final.xml
+
+          grep -q 'com.tntlikely.beecount.CashbookNotificationCaptureService' dist/AndroidManifest-final.xml
+          grep -q 'android.permission.BIND_NOTIFICATION_LISTENER_SERVICE' dist/AndroidManifest-final.xml
+
+          FORBIDDEN_PERMISSIONS=(
+            android.permission.READ_SMS
+            android.permission.RECEIVE_SMS
+            android.permission.SEND_SMS
+            android.permission.RECORD_AUDIO
+            android.permission.READ_MEDIA_IMAGES
+            android.permission.READ_MEDIA_VIDEO
+            android.permission.READ_MEDIA_AUDIO
+            android.permission.READ_EXTERNAL_STORAGE
+            android.permission.WRITE_EXTERNAL_STORAGE
+            android.permission.REQUEST_INSTALL_PACKAGES
+          )
+
+          for permission in "${FORBIDDEN_PERMISSIONS[@]}"; do
+            if grep -q "android:name=\"${permission}\"" dist/AndroidManifest-final.xml; then
+              echo "::error::Forbidden permission present in final APK: ${permission}"
+              exit 1
+            fi
+          done
+
+          sha256sum dist/Cashbook-v0.1.0-alpha-arm64.apk > dist/Cashbook-v0.1.0-alpha-arm64.apk.sha256
+
       - uses: actions/upload-artifact@v4
         with:
           name: cashbook-v0.1.0-alpha-arm64
