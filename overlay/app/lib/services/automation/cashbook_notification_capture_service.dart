@@ -259,7 +259,7 @@ class CashbookNotificationCaptureService {
 
   Future<void> setDiagnosticsEnabled(bool enabled) async {
     if (!Platform.isAndroid) return;
-    await _channel.invokeMethod<void>('setDiagnosticsEnabled', enabled);
+    await _channel.invokeMethod<bool>('setDiagnosticsEnabled', enabled);
   }
 
   Future<List<CashbookNotificationDiagnosticEvent>> diagnosticEvents() async {
@@ -291,7 +291,7 @@ class CashbookNotificationCaptureService {
 
   Future<void> clearDiagnostics() async {
     if (!Platform.isAndroid) return;
-    await _channel.invokeMethod<void>('clearDiagnostics');
+    await _channel.invokeMethod<bool>('clearDiagnostics');
   }
 
   Future<bool> isAutoConfirmEnabled() async {
