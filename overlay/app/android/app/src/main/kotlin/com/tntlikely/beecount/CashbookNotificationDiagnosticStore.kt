@@ -15,7 +15,11 @@ class CashbookNotificationDiagnosticStore(context: Context) {
     fun isEnabled(): Boolean = prefs.getBoolean(KEY_ENABLED, false)
 
     fun setEnabled(enabled: Boolean) {
-        prefs.edit().putBoolean(KEY_ENABLED, enabled).apply()
+        val editor = prefs.edit().putBoolean(KEY_ENABLED, enabled)
+        if (!enabled) {
+            editor.remove(KEY_EVENTS)
+        }
+        editor.apply()
     }
 
     fun record(
