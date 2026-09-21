@@ -1,6 +1,6 @@
 services:
   cashbook-cloud:
-    image: sunxiao0721/beecount-cloud:latest
+    image: "${CASHBOOK_CLOUD_IMAGE:-sunxiao0721/beecount-cloud:latest}"
     container_name: cashbook-cloud
     restart: unless-stopped
 
