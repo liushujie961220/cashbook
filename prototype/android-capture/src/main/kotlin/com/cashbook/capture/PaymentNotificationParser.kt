@@ -90,7 +90,7 @@ class PaymentNotificationParser {
             merchant = merchant,
             occurredAtMillis = postedAtMillis,
             confidence = confidence,
-            fingerprint = fingerprint(source, amount, direction, merchant, postedAtMillis),
+            fingerprint = fingerprint(source, amount, direction, merchant),
         )
     }
 
@@ -121,7 +121,6 @@ class PaymentNotificationParser {
         amount: Double,
     ): Double {
         var score = 0.55
-
         if (amount > 0.0) score += 0.20
         if (merchant != null) score += 0.10
 
@@ -132,36 +131,30 @@ class PaymentNotificationParser {
                 text.contains("支付宝") || text.contains("交易提醒") || text.contains("支付成功")
         }
         if (strongSignal) score += 0.12
-
-        // Very generic text should not auto-confirm.
         if (text.length < 8) score -= 0.10
-
         return score.coerceIn(0.0, 0.99)
     }
 
     /**
-     * Fingerprint deliberately excludes raw notification text.
-     * Time is bucketed to 30 seconds so Android reposts can deduplicate.
+     * Stable core fingerprint: raw notification text and timestamps are excluded.
+     * The queue applies a separate time-window check before treating it as a duplicate.
      */
     private fun fingerprint(
         source: CaptureSource,
         amount: Double,
         direction: Direction,
         merchant: String?,
-        occurredAtMillis: Long,
     ): String {
-        val timeBucket = occurredAtMillis / 30_000L
         val material = listOf(
             source.name,
             String.format(Locale.ROOT, "%.2f", amount),
             direction.name,
             merchant.orEmpty().lowercase(Locale.ROOT),
-            timeBucket.toString(),
         ).joinToString("|")
 
         val digest = MessageDigest.getInstance("SHA-256")
             .digest(material.toByteArray(StandardCharsets.UTF_8))
 
-        return digest.joinToString("") { "%02x".format(it) }.take(24)
+        return digest.joinToString("") { "%02x".format(it.toInt() and 0xff) }.take(24)
     }
 }
