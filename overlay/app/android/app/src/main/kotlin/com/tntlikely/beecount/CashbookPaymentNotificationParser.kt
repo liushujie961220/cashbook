@@ -26,16 +26,16 @@ class CashbookPaymentNotificationParser {
     )
 
     private val amountPatterns = listOf(
-        Regex("""(?:¥|￥|人民币|RMB|CNY)s*([0-9]+(?:,[0-9]{3})*(?:.[0-9]{1,2})?)""", RegexOption.IGNORE_CASE),
-        Regex("""([0-9]+(?:,[0-9]{3})*(?:.[0-9]{1,2})?)s*(?:元|块|圆)""", RegexOption.IGNORE_CASE),
-        Regex("""(?:金额|支付|付款|消费|扣款|支出|收入|收款|到账|退款)[^0-9¥￥]{0,10}(?:¥|￥)?s*([0-9]+(?:,[0-9]{3})*(?:.[0-9]{1,2})?)""", RegexOption.IGNORE_CASE),
+        Regex("""(?:¥|￥|人民币|RMB|CNY)\s*([0-9]+(?:,[0-9]{3})*(?:\.[0-9]{1,2})?)""", RegexOption.IGNORE_CASE),
+        Regex("""([0-9]+(?:,[0-9]{3})*(?:\.[0-9]{1,2})?)\s*(?:元|块|圆)""", RegexOption.IGNORE_CASE),
+        Regex("""(?:金额|支付|付款|消费|扣款|支出|收入|收款|到账|退款)[^0-9¥￥]{0,10}(?:¥|￥)?\s*([0-9]+(?:,[0-9]{3})*(?:\.[0-9]{1,2})?)""", RegexOption.IGNORE_CASE),
     )
 
     private val merchantPatterns = listOf(
-        Regex("""(?:商户|商家|收款方)[：:s]+([^|，,；;]{2,30})"""),
-        Regex("""向s*([^|，,；;]{2,30}?)s*(?:付款|支付)"""),
-        Regex("""在s*([^|，,；;]{2,30}?)s*(?:消费|支付)"""),
-        Regex("""来自s*([^|，,；;]{2,30})"""),
+        Regex("""(?:商户|商家|收款方)[：:\s]+([^|，,；;]{2,30})"""),
+        Regex("""向\s*([^|，,；;]{2,30}?)\s*(?:付款|支付)"""),
+        Regex("""在\s*([^|，,；;]{2,30}?)\s*(?:消费|支付)"""),
+        Regex("""来自\s*([^|，,；;]{2,30})"""),
     )
 
     fun parse(
@@ -51,7 +51,7 @@ class CashbookPaymentNotificationParser {
 
         val normalized = listOfNotNull(content.title, content.text, content.bigText)
             .joinToString(" | ")
-            .replace(Regex("\s+"), " ")
+            .replace(Regex("\\s+"), " ")
             .trim()
 
         if (normalized.isBlank()) return null
@@ -65,6 +65,7 @@ class CashbookPaymentNotificationParser {
             expensePattern.containsMatchIn(normalized) -> CashbookDirection.EXPENSE
             else -> return null
         }
+
         val merchant = extractMerchant(normalized)
         val confidence = calculateConfidence(source, normalized, merchant)
 
@@ -75,7 +76,7 @@ class CashbookPaymentNotificationParser {
             merchant = merchant,
             occurredAtMillis = postedAtMillis,
             confidence = confidence,
-            fingerprint = fingerprint(source, amount, direction, merchant, postedAtMillis),
+            fingerprint = fingerprint(source, amount, direction, merchant),
         )
     }
 
@@ -91,7 +92,7 @@ class CashbookPaymentNotificationParser {
     private fun extractMerchant(text: String): String? {
         for (pattern in merchantPatterns) {
             val raw = pattern.find(text)?.groupValues?.getOrNull(1)?.trim() ?: continue
-            val cleaned = raw.replace(Regex("""s+"""), " ")
+            val cleaned = raw.replace(Regex("""\s+"""), " ")
                 .trim(' ', '。', '.', '，', ',', '：', ':')
             if (cleaned.length in 2..30) return cleaned
         }
@@ -120,15 +121,12 @@ class CashbookPaymentNotificationParser {
         amount: Double,
         direction: CashbookDirection,
         merchant: String?,
-        occurredAtMillis: Long,
     ): String {
-        val timeBucket = occurredAtMillis / 30_000L
         val material = listOf(
             source.name,
             String.format(Locale.ROOT, "%.2f", amount),
             direction.name,
             merchant.orEmpty().lowercase(Locale.ROOT),
-            timeBucket.toString(),
         ).joinToString("|")
 
         val digest = MessageDigest.getInstance("SHA-256")
