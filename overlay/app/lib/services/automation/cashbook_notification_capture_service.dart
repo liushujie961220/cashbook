@@ -77,7 +77,7 @@ class CashbookCandidateTransaction {
       direction: direction,
       merchant: merchantRaw == null || merchantRaw.isEmpty ? null : merchantRaw,
       occurredAt: DateTime.fromMillisecondsSinceEpoch(occurredAtMillis),
-      confidence: confidence.clamp(0.0, 1.0),
+      confidence: confidence.clamp(0.0, 1.0).toDouble(),
       fingerprint: fingerprint,
     );
   }
@@ -200,7 +200,7 @@ class CashbookNotificationCaptureService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(
       _autoConfirmThresholdKey,
-      value.clamp(0.80, 0.99),
+      value.clamp(0.80, 0.99).toDouble(),
     );
   }
 
